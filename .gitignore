@@ -1,0 +1,44 @@
+# Environment & secrets
+.env
+*.env.local
+**/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+
+# Generated reports (contain scan data — do not commit)
+backend/reports/
+*.json
+!package.json
+!tsconfig.json
+
+# Node
+node_modules/
+.next/
+out/
+npm-debug.log*
+yarn-error.log*
+
+# IaC state files (may contain secrets)
+*.tfstate
+*.tfstate.backup
+.terraform/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
