@@ -19,25 +19,27 @@ _done:   dict[str, bool]       = {}
 
 # ── Lifecycle ─────────────────────────────────────────────────────────
 
-def create_job(job_id: str, scan_llm: str, report_llm: str, platforms: list[str]) -> None:
+def create_job(job_id: str, scan_llm: str, report_llm: str, platforms: list[str],
+               report_name: str = "") -> None:
     """Called when a scan is accepted. Writes initial meta to disk."""
     REPORTS_DIR.mkdir(exist_ok=True)
     _events[job_id] = []
     _done[job_id]   = False
     _write_meta(job_id, {
-        "job_id":      job_id,
-        "status":      "running",
-        "started_at":  _now(),
+        "job_id":       job_id,
+        "report_name":  report_name,
+        "status":       "running",
+        "started_at":   _now(),
         "completed_at": None,
-        "scan_llm":    scan_llm,
-        "report_llm":  report_llm,
-        "platforms":   platforms,
-        "total":       0,
-        "critical":    0,
-        "high":        0,
-        "medium":      0,
-        "low":         0,
-        "info":        0,
+        "scan_llm":     scan_llm,
+        "report_llm":   report_llm,
+        "platforms":    platforms,
+        "total":        0,
+        "critical":     0,
+        "high":         0,
+        "medium":       0,
+        "low":          0,
+        "info":         0,
     })
 
 

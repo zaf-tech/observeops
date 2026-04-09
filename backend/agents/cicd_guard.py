@@ -1,16 +1,21 @@
 """
 Skill 4 — CI/CD Guard
 Audits pipeline health across GitHub Actions, Jenkins, Azure DevOps,
-CircleCI, ArgoCD, Tekton. Platform-agnostic — loads CI/CD plugins.
+CircleCI, ArgoCD, Tekton. Platform-agnostic — plugin list driven by skills/cicd_guard.yaml.
 """
 import logging
+import pathlib
+import yaml
 from typing import Callable
 
 logger = logging.getLogger(__name__)
 
-CICD_PLUGIN_NAMES = {
-    "jenkins", "azure_devops", "circleci", "argocd", "github", "gitlab",
-}
+_SKILL_FILE = pathlib.Path(__file__).parent.parent / "skills" / "cicd_guard.yaml"
+with open(_SKILL_FILE) as _f:
+    SKILL_DEF = yaml.safe_load(_f)
+
+CICD_PLUGIN_NAMES = set(SKILL_DEF.get("plugins", {}).keys())
+_CICD_KEYWORDS  = SKILL_DEF.get("cicd_keywords", ["action", "pipeline", "ci", "workflow"])
 
 
 class CICDGuard:
@@ -40,8 +45,7 @@ class CICDGuard:
                 if plugin.name in ("github", "gitlab"):
                     plugin_findings = [
                         f for f in plugin_findings
-                        if any(kw in f.get("finding", "").lower()
-                               for kw in ("action", "pipeline", "ci", "workflow", "branch protection"))
+                        if any(kw in f.get("finding", "").lower() for kw in _CICD_KEYWORDS)
                     ]
                 findings.extend(plugin_findings)
                 self._progress(f"CICDGuard: {plugin.name} → {len(plugin_findings)} finding(s)")

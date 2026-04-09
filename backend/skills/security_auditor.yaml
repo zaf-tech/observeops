@@ -1,0 +1,54 @@
+skill_id: 3
+name: SecurityAuditor
+display_name: Security Auditor
+icon: "🛡️"
+description: >
+  Cross-platform security review — audits IAM roles and policies from cloud
+  plugins, then scans code repositories for hardcoded secrets, exposed tokens,
+  and weak credentials. Filters findings from other agents to surface only
+  security and compliance categories.
+llm_role: none
+plugins:
+  # IAM group — filters security/compliance findings only
+  aws:
+    description: IAM roles, policies, root account usage, MFA
+    credential_keys: [AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY]
+    filter: security_compliance
+  azure:
+    description: RBAC, service principals, Key Vault policies
+    credential_keys: [AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET]
+    filter: security_compliance
+  gcp:
+    description: Service account permissions, IAM bindings
+    credential_keys: [GCP_SERVICE_ACCOUNT_JSON]
+    filter: security_compliance
+  # Secret scanning group — scans repos for hardcoded credentials
+  github:
+    description: Secret scanning, exposed tokens in commits
+    credential_keys: [GITHUB_TOKEN]
+    filter: secrets
+  gitlab:
+    description: Secret scanning, CI variable exposure
+    credential_keys: [GITLAB_TOKEN]
+    filter: secrets
+  bitbucket:
+    description: Secret scanning in repos
+    credential_keys: [BITBUCKET_USERNAME, BITBUCKET_APP_PASSWORD]
+    filter: secrets
+scan_categories: [security, compliance]
+secret_patterns:
+  - name: Hardcoded password
+    regex: "(?i)(password|passwd|pwd)\\s*[=:]\\s*['\"]?[^\\s'\"]{8,}"
+  - name: Hardcoded API key
+    regex: "(?i)(api[_-]?key|apikey)\\s*[=:]\\s*['\"]?[^\\s'\"]{8,}"
+  - name: AWS Access Key ID
+    regex: "AKIA[0-9A-Z]{16}"
+  - name: GitHub PAT
+    regex: "ghp_[A-Za-z0-9_]{36}"
+  - name: GitLab PAT
+    regex: "glpat-[A-Za-z0-9\\-_]{20}"
+estimates:
+  scan_time_per_plugin_s: 15
+  tokens_per_finding: 55
+  base_prompt_tokens: 350
+  typical_output_tokens: 1000

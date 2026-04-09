@@ -6,6 +6,7 @@ export interface AnalyzeRequest {
   report_llm: string;
   llm_config?: { scan: Record<string, unknown>; report: Record<string, unknown> };
   custom_instructions?: string;
+  report_name?: string;
 }
 
 export interface AnalyzeResponse {
@@ -49,6 +50,38 @@ export interface ReportResponse {
   findings: Finding[];
   plugin_audit: PluginAuditEntry[];
   platform_stats: Record<string, Record<string, unknown>>;
+  token_usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+}
+
+export interface SkillPlugin {
+  description: string;
+  credential_keys: string[];
+  filter?: string;
+}
+
+export interface SkillLLMProvider {
+  display: string;
+  speed_tokens_per_sec: number;
+  cost_per_1k_tokens_usd: number;
+  context_window: number;
+}
+
+export interface SkillDef {
+  skill_id: number;
+  name: string;
+  display_name: string;
+  icon: string;
+  description: string;
+  llm_role: "scanning" | "reporting" | "none";
+  plugins: Record<string, SkillPlugin>;
+  scan_categories: string[];
+  estimates: {
+    scan_time_per_plugin_s: number;
+    tokens_per_finding: number;
+    base_prompt_tokens: number;
+    typical_output_tokens: number;
+  };
+  llm_providers?: Record<string, SkillLLMProvider>;
 }
 
 export interface Finding {
@@ -102,6 +135,7 @@ export async function fetchPlugins(): Promise<Plugin[]> {
 
 export interface JobSummary {
   job_id: string;
+  report_name?: string;
   status: "running" | "completed" | "error";
   started_at: string;
   completed_at: string | null;
@@ -140,6 +174,17 @@ export async function validateCredentials(credentials: Record<string, string>): 
   });
   if (!res.ok) throw new Error(`Validation failed: ${res.statusText}`);
   return res.json();
+}
+
+export async function fetchSkills(): Promise<SkillDef[]> {
+  try {
+    const res = await fetch(`${API_BASE}/api/skills`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.skills || [];
+  } catch {
+    return [];
+  }
 }
 
 export async function healthCheck(): Promise<boolean> {

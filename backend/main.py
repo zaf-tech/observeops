@@ -42,13 +42,14 @@ app.add_middleware(
 )
 
 # Register routers
-from routers import analyze, status, report, validate, history  # noqa: E402
+from routers import analyze, status, report, validate, history, skills  # noqa: E402
 
 app.include_router(analyze.router, prefix="/api")
 app.include_router(status.router, prefix="/api")
 app.include_router(report.router, prefix="/api")
 app.include_router(validate.router, prefix="/api")
 app.include_router(history.router, prefix="/api")
+app.include_router(skills.router, prefix="/api")
 
 
 @app.get("/", tags=["health"])

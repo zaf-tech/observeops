@@ -1,0 +1,37 @@
+skill_id: 1
+name: CloudAuditor
+display_name: Cloud Auditor
+icon: "☁️"
+description: >
+  Scans cloud infrastructure and Kubernetes clusters for security misconfigurations,
+  cost risks, and compliance issues. Delegates to whichever cloud plugins have valid
+  credentials — runs nothing if no cloud keys are detected.
+llm_role: none
+plugins:
+  aws:
+    description: EC2, S3, IAM, RDS, VPC, Lambda
+    credential_keys: [AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY]
+  azure:
+    description: AKS, ARM, Key Vault, Azure DevOps
+    credential_keys: [AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET]
+  gcp:
+    description: GKE, GCS, IAM, Cloud Build
+    credential_keys: [GCP_SERVICE_ACCOUNT_JSON]
+  eks:
+    description: Amazon EKS + kubeconfig
+    credential_keys: [AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY]
+  aks:
+    description: Azure AKS + kubeconfig
+    credential_keys: [AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET]
+  gke:
+    description: Google GKE + kubeconfig
+    credential_keys: [GCP_SERVICE_ACCOUNT_JSON]
+  cloudformation:
+    description: CloudFormation template scanner
+    credential_keys: [AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY]
+scan_categories: [security, cost, reliability, compliance]
+estimates:
+  scan_time_per_plugin_s: 25
+  tokens_per_finding: 60
+  base_prompt_tokens: 400
+  typical_output_tokens: 2000

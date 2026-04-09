@@ -16,6 +16,7 @@ class AnalyzeRequest(BaseModel):
     report_llm: str = "ollama"
     llm_config: dict[str, Any] = {}   # {"scan": {...}, "report": {...}}
     custom_instructions: str = ""     # optional user-supplied report guidance
+    report_name: str = ""             # optional human-readable report title
 
 
 class AnalyzeResponse(BaseModel):
@@ -34,7 +35,8 @@ async def analyze(request: AnalyzeRequest, background_tasks: BackgroundTasks):
     job_id = str(uuid.uuid4())
     platforms = [k.split("_")[0].lower() for k, v in request.credentials.items() if v]
 
-    job_store.create_job(job_id, request.llm_provider, request.report_llm, platforms)
+    job_store.create_job(job_id, request.llm_provider, request.report_llm, platforms,
+                        report_name=request.report_name.strip())
 
     def progress_cb(skill: str, status: str, count: int):
         event = {"skill": skill, "status": status, "findings_count": count}
@@ -49,6 +51,7 @@ async def analyze(request: AnalyzeRequest, background_tasks: BackgroundTasks):
         request.report_llm,
         dict(request.llm_config),
         request.custom_instructions,
+        request.report_name.strip(),
         progress_cb,
     )
 
@@ -62,12 +65,14 @@ async def _run_audit_task(
     report_llm: str,
     llm_config: dict,
     custom_instructions: str,
+    report_name: str,
     progress_cb,
 ):
     import job_store
     try:
         from synthesizer import run_audit
-        await run_audit(job_id, credentials, scan_llm, report_llm, llm_config, custom_instructions, progress_cb)
+        await run_audit(job_id, credentials, scan_llm, report_llm, llm_config,
+                       custom_instructions, report_name, progress_cb)
     except Exception as exc:
         logger.error("Audit task failed for job %s: %s", job_id, exc)
         job_store.fail_job(job_id, str(exc))

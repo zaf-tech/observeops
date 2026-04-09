@@ -6,6 +6,7 @@ import LLMSelector, { type LLMConfig } from "@/components/LLMSelector";
 import StatusLog from "@/components/StatusLog";
 import ReportViewer from "@/components/ReportViewer";
 import ReportHistory from "@/components/ReportHistory";
+import OrchestrationView from "@/components/OrchestrationView";
 import {
   startAnalysis,
   fetchReport,
@@ -33,6 +34,7 @@ export default function HomePage() {
   const [scanLlm,   setScanLlm]   = useState<LLMConfig>({ provider: "ollama" });
   const [reportLlm, setReportLlm] = useState<LLMConfig>({ provider: "ollama" });
   const [customInstructions, setCustomInstructions] = useState("");
+  const [reportName, setReportName] = useState("");
   const [phase,  setPhase]                    = useState<Phase>("idle");
   const [jobId,  setJobId]                    = useState<string | null>(null);
   const [events, setEvents]                   = useState<StatusEvent[]>([]);
@@ -40,7 +42,7 @@ export default function HomePage() {
   const [error,  setError]                    = useState<string | null>(null);
   const [backendOk, setBackendOk]             = useState<boolean | null>(null);
   const [validationResults, setValidationResults] = useState<ValidationResult[]>([]);
-  const [rightTab, setRightTab]               = useState<"scan" | "history">("scan");
+  const [rightTab, setRightTab]               = useState<"scan" | "orchestration" | "history">("scan");
 
   useEffect(() => { healthCheck().then(setBackendOk); }, []);
 
@@ -79,6 +81,7 @@ export default function HomePage() {
     setEvents([]);
     setJobId(null);
     setPhase("scanning");
+    setRightTab("orchestration");
 
     try {
       const { job_id } = await startAnalysis({
@@ -87,6 +90,7 @@ export default function HomePage() {
         report_llm: reportLlm.provider,
         llm_config: { scan: scanLlm as unknown as Record<string, unknown>, report: reportLlm as unknown as Record<string, unknown> },
         custom_instructions: customInstructions,
+        report_name: reportName.trim(),
       });
       setJobId(job_id);
 
@@ -111,6 +115,7 @@ export default function HomePage() {
             const r = await fetchWithRetry(job_id);
             setReport(r);
             setPhase("done");
+            setRightTab("scan");
           } catch (err: unknown) {
             setError(err instanceof Error ? err.message : "Report unavailable");
             setPhase("error");
@@ -209,6 +214,23 @@ export default function HomePage() {
               <LLMSelector label="Report Model (Skill 6)" config={reportLlm} onChange={setReportLlm} />
             </div>
 
+            {/* ── Report Name ── */}
+            <div className="rounded-2xl border border-teal-500/20 bg-white/3 p-5 space-y-2">
+              <label className="text-sm font-bold text-white flex items-center gap-2">
+                <span className="text-teal-400">🏷️</span>
+                Report Name
+                <span className="text-xs font-normal text-gray-500">(optional)</span>
+              </label>
+              <input
+                type="text"
+                value={reportName}
+                onChange={(e) => setReportName(e.target.value.slice(0, 80))}
+                placeholder="e.g. Q2 2026 AWS Security Review"
+                maxLength={80}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-teal-500/40 focus:bg-white/8 transition-colors"
+              />
+            </div>
+
             {/* ── Custom Instructions ── */}
             <div className="rounded-2xl border border-teal-500/20 bg-white/3 p-6 space-y-3">
               <div className="flex items-start justify-between">
@@ -298,10 +320,12 @@ export default function HomePage() {
 
             {/* Tab bar */}
             <div className="flex gap-1 p-1 bg-white/5 rounded-xl border border-white/10">
-              <TabBtn active={rightTab === "scan"}    onClick={() => setRightTab("scan")}
-                icon={<Activity className="w-4 h-4" />} label="Scan & Report" />
-              <TabBtn active={rightTab === "history"} onClick={() => setRightTab("history")}
-                icon={<History  className="w-4 h-4" />} label="Report History" />
+              <TabBtn active={rightTab === "scan"}          onClick={() => setRightTab("scan")}
+                icon={<Activity  className="w-4 h-4" />} label="Scan & Report" />
+              <TabBtn active={rightTab === "orchestration"} onClick={() => setRightTab("orchestration")}
+                icon={<Server    className="w-4 h-4" />} label="Orchestration" />
+              <TabBtn active={rightTab === "history"}       onClick={() => setRightTab("history")}
+                icon={<History   className="w-4 h-4" />} label="Report History" />
             </div>
 
             {/* ── Scan tab ── */}
@@ -356,6 +380,23 @@ export default function HomePage() {
                   </div>
                 )}
               </>
+            )}
+
+            {/* ── Orchestration tab ── */}
+            {rightTab === "orchestration" && (
+              <div className="rounded-2xl border border-teal-500/20 bg-white/3 p-6">
+                <h2 className="text-lg font-bold text-white mb-5 flex items-center gap-2">
+                  <Server className="w-5 h-5 text-teal-400" />
+                  Agent Orchestration
+                </h2>
+                <OrchestrationView
+                  events={events}
+                  isRunning={phase === "scanning"}
+                  scanLlm={scanLlm}
+                  reportLlm={reportLlm}
+                  credentials={credentials}
+                />
+              </div>
             )}
 
             {/* ── History tab ── */}

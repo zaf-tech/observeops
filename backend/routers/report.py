@@ -205,11 +205,18 @@ def _build_html(report: dict) -> str:
 
     # ── PAGE 2 — Platform Overview (live stats) ──────────────────────
     platform_overview_html = ""
-    if platform_stats:
+    billing_data = platform_stats.get("_billing")
+    non_billing_stats = {k: v for k, v in platform_stats.items() if k != "_billing"}
+
+    if non_billing_stats or billing_data:
         stats_cards = ""
-        for pname, meta in platform_stats.items():
+        for pname, meta in non_billing_stats.items():
             icon = PLATFORM_ICONS.get(pname, "📦")
             stats_cards += _build_platform_stats_card(pname, icon, meta)
+
+        billing_section_html = ""
+        if billing_data:
+            billing_section_html = _build_billing_html(billing_data)
 
         platform_overview_html = f"""
         <div class="page-break"></div>
@@ -218,9 +225,8 @@ def _build_html(report: dict) -> str:
                 <span>📊 PLATFORM OVERVIEW</span>
                 <span class="section-sub">Live statistics collected during scan</span>
             </div>
-            <div class="stats-grid">
-                {stats_cards}
-            </div>
+            {f'<div class="stats-grid">{stats_cards}</div>' if stats_cards else ""}
+            {billing_section_html}
         </div>
         """
 
@@ -245,14 +251,141 @@ def _build_html(report: dict) -> str:
         </div>
         """
 
-    # ── PAGE 4 — Detailed Findings ───────────────────────────────────
-    finding_sections = ""
+    # ── PER-PROVIDER PAGES — one page per cloud provider ─────────────
+    # Group findings and stats by provider
+    all_providers = sorted(set(
+        list(by_plat.keys()) + list(non_billing_stats.keys())
+    ))
+    per_provider_pages = ""
+    for provider in all_providers:
+        prov_findings = [f for f in findings if f.get("platform") == provider]
+        prov_stats    = non_billing_stats.get(provider)
+        prov_billing  = billing_data.get(provider) if billing_data else None
+        pc            = PROVIDER_COLORS.get(provider, {"bar": "#14b8a6", "mtd": "#3b82f6", "header": "#0f172a", "accent": "#14b8a6", "icon": "📦", "label": provider.upper()})
+        icon          = PLATFORM_ICONS.get(provider, "📦")
+
+        # Provider stats card
+        prov_stats_html = ""
+        if prov_stats:
+            prov_stats_html = f'<div style="margin-bottom:16px">{_build_platform_stats_card(provider, icon, prov_stats)}</div>'
+
+        # Provider billing mini-section
+        prov_billing_html = ""
+        if prov_billing and isinstance(prov_billing, dict):
+            hist = prov_billing.get("historical_months", [])
+            mtd  = prov_billing.get("current_mtd")
+            fc   = prov_billing.get("forecast")
+            svcs = prov_billing.get("top_services", [])
+            cur  = prov_billing.get("current_month", "Current")
+            if hist or mtd:
+                bars = [{"month": m["month"], "amount": m["amount"], "color": pc["bar"], "opacity": "0.75"} for m in hist]
+                if mtd:
+                    bars.append({"month": f"{cur} MTD", "amount": mtd["amount"], "color": pc["mtd"], "opacity": "0.9"})
+                if fc:
+                    bars.append({"month": "Fcst", "amount": fc["amount"], "color": "#f97316", "opacity": "0.65"})
+                svg = _build_provider_svg(bars, chart_w=350, chart_h=90)
+                table_rows_b = ""
+                for i, m in enumerate(hist):
+                    prev = hist[i-1]["amount"] if i > 0 else None
+                    diff = f"{((m['amount']-prev)/prev*100):+.1f}%" if prev and prev > 0 else "—"
+                    diff_c = "#dc2626" if diff.startswith("+") and float(diff[1:-1]) > 10 else ("#16a34a" if diff.startswith("-") else "#6b7280")
+                    table_rows_b += f"<tr><td>{m['month']}</td><td style='text-align:right'>${m['amount']:,.2f}</td><td style='text-align:right;color:{diff_c}'>{diff}</td></tr>"
+                if mtd:
+                    table_rows_b += f"<tr style='background:#eff6ff'><td>{cur} (MTD)</td><td style='text-align:right;color:#2563eb;font-weight:700'>${mtd['amount']:,.2f}</td><td>—</td></tr>"
+                if fc:
+                    table_rows_b += f"<tr style='background:#fff7ed'><td><em>Forecast</em></td><td style='text-align:right;color:#ea580c;font-weight:700'>${fc['amount']:,.2f}</td><td>—</td></tr>"
+                svc_rows_b = ""
+                if svcs:
+                    max_s = svcs[0]["amount"] or 1
+                    for s in svcs[:6]:
+                        pct = int((s["amount"] / max_s) * 100)
+                        svc_rows_b += f"<tr><td style='font-size:7.5pt'>{s['service'][:40]}</td><td><div style='background:#e5e7eb;height:6px;width:80px;border-radius:2px'><div style='background:{pc['accent']};height:6px;width:{pct}%;border-radius:2px'></div></div></td><td style='text-align:right;font-size:7.5pt'>${s['amount']:,.2f}</td></tr>"
+                prov_billing_html = f"""
+                <div style="margin:12px 0;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
+                    <div style="padding:7px 12px;background:{pc['header']};color:{pc['accent']};font-size:9pt;font-weight:800">💰 Billing — {pc['label']}</div>
+                    <div style="padding:10px 12px;background:white">
+                        {svg}
+                        <div style="display:flex;gap:8px;margin-top:4px;font-size:6.5pt;color:#9ca3af">
+                            <span>&#9646; Historical</span>
+                            {"<span style='color:#3b82f6'>&#9646; MTD</span>" if mtd else ""}
+                            {"<span style='color:#f97316'>&#9646; Forecast</span>" if fc else ""}
+                        </div>
+                        {f"<table class='billing-table' style='margin-top:8px'><tr><th>Month</th><th style='text-align:right'>Cost</th><th style='text-align:right'>vs Prev</th></tr>{table_rows_b}</table>" if table_rows_b else ""}
+                        {f"<p style='font-size:8pt;font-weight:600;margin-top:8px;margin-bottom:3px'>Top Services</p><table class='billing-table'>{svc_rows_b}</table>" if svc_rows_b else ""}
+                    </div>
+                </div>"""
+            elif prov_billing.get("note"):
+                prov_billing_html = f'<p style="font-size:8pt;color:#b45309;border:1px solid #fde68a;background:#fffbeb;padding:6px 10px;border-radius:6px;margin:10px 0">{prov_billing["note"]}</p>'
+
+        # Provider findings by severity
+        prov_findings_html = ""
+        for sev in ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]:
+            sev_f = [f for f in prov_findings if f.get("severity") == sev]
+            if not sev_f:
+                continue
+            cfg = SEV_CONFIG[sev]
+            cards_p = ""
+            for i, f in enumerate(sev_f):
+                evidence = f.get("evidence", {})
+                ev_html = ""
+                if evidence:
+                    ev_items = "".join(
+                        f"<div><span class='ev-key'>{k}:</span> <span class='ev-val'>{str(v)[:120]}</span></div>"
+                        for k, v in list(evidence.items())[:3]
+                    )
+                    ev_html = f'<div class="evidence-block">{ev_items}</div>'
+                cards_p += f"""
+                <div class="finding-card" style="border-left-color:{cfg['hex']}">
+                    <div class="finding-header">
+                        <span class="finding-num" style="background:{cfg['hex']}">{i+1}</span>
+                        <div class="finding-meta">
+                            <span class="finding-resource">{f.get('resource','')[:80]}</span>
+                            <span class="finding-cat">{f.get('category','').title()}</span>
+                        </div>
+                    </div>
+                    <p class="finding-title">{f.get('finding','')}</p>
+                    <div class="finding-rec"><span class="rec-icon">→</span><span>{f.get('recommendation','')}</span></div>
+                    {ev_html}
+                </div>"""
+            prov_findings_html += f"""
+            <div class="section-header" style="background:{cfg['hex']}">
+                <span>{cfg['emoji']} {sev}</span><span class="section-count">{len(sev_f)}</span>
+            </div>{cards_p}"""
+
+        if not prov_findings_html and not prov_stats_html and not prov_billing_html:
+            continue
+
+        # Provider severity summary bar
+        prov_by_sev = {sev: len([f for f in prov_findings if f.get("severity") == sev]) for sev in ["CRITICAL","HIGH","MEDIUM","LOW","INFO"]}
+        sev_bar = ""
+        for sev, cnt in prov_by_sev.items():
+            if cnt:
+                cfg = SEV_CONFIG[sev]
+                sev_bar += f'<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;background:{cfg["bg"]};border:1px solid {cfg["border"]};font-size:7.5pt;font-weight:700;color:{cfg["hex"]}">{cfg["emoji"]} {cnt}</span>'
+
+        per_provider_pages += f"""
+        <div class="page-break"></div>
+        <div class="content-page">
+            <div class="provider-page-header" style="background:linear-gradient(90deg,{pc['header']},{pc['header']}ee);border-left:5px solid {pc['accent']}">
+                <span style="font-size:18pt">{icon}</span>
+                <div>
+                    <div style="font-size:14pt;font-weight:900;color:{pc['accent']}">{pc['label']} Report</div>
+                    <div style="font-size:8pt;color:#94a3b8;margin-top:2px">{len(prov_findings)} findings · {generated}</div>
+                </div>
+                <div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">{sev_bar}</div>
+            </div>
+            {prov_stats_html}
+            {prov_billing_html}
+            {prov_findings_html if prov_findings_html else '<p style="color:#6b7280;font-size:9pt;padding:12px 0">No findings for this provider.</p>'}
+        </div>"""
+
+    # ── PAGE — All Findings (consolidated, sorted by severity) ───────
+    all_finding_sections = ""
     for sev in ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]:
         sev_findings = [f for f in findings if f.get("severity") == sev]
         if not sev_findings:
             continue
         cfg = SEV_CONFIG[sev]
-
         cards = ""
         for i, f in enumerate(sev_findings):
             evidence = f.get("evidence", {})
@@ -263,7 +396,6 @@ def _build_html(report: dict) -> str:
                     for k, v in list(evidence.items())[:5]
                 )
                 ev_html = f'<div class="evidence-block">{ev_items}</div>'
-
             cards += f"""
             <div class="finding-card" style="border-left-color:{cfg['hex']}">
                 <div class="finding-header">
@@ -281,26 +413,24 @@ def _build_html(report: dict) -> str:
                 </div>
                 {ev_html}
             </div>"""
-
-        finding_sections += f"""
+        all_finding_sections += f"""
         <div class="section-header" style="background:{cfg['hex']}">
             <span>{cfg['emoji']} {sev} FINDINGS</span>
             <span class="section-count">{len(sev_findings)}</span>
         </div>
-        {cards}
-        """
+        {cards}"""
 
-    if not finding_sections:
-        finding_sections = '<div class="no-findings">✅ No findings detected across all scanned platforms.</div>'
+    if not all_finding_sections:
+        all_finding_sections = '<div class="no-findings">✅ No findings detected across all scanned platforms.</div>'
 
     findings_page = f"""
     <div class="page-break"></div>
     <div class="content-page">
         <div class="page-section-header orange">
-            <span>🔍 DETAILED FINDINGS</span>
+            <span>🔍 ALL FINDINGS — CONSOLIDATED</span>
             <span class="section-sub">Sorted by severity · {total} total</span>
         </div>
-        {finding_sections}
+        {all_finding_sections}
     </div>
     """
 
@@ -311,12 +441,196 @@ def _build_html(report: dict) -> str:
 {cover}
 {platform_overview_html}
 {executive_html}
+{per_provider_pages}
 {findings_page}
 <div class="report-footer">
     ObserveOps · {generated} · Report {job_id}… · Read-only scan · No changes were made to any system
 </div>
 </body>
 </html>"""
+
+
+PROVIDER_COLORS = {
+    "aws":   {"bar": "#f97316", "mtd": "#3b82f6", "header": "#1c1917", "accent": "#f97316", "icon": "☁️",  "label": "AWS"},
+    "azure": {"bar": "#3b82f6", "mtd": "#60a5fa", "header": "#1e1b4b", "accent": "#3b82f6", "icon": "🔷", "label": "Azure"},
+    "gcp":   {"bar": "#eab308", "mtd": "#facc15", "header": "#1c1917", "accent": "#eab308", "icon": "🌐", "label": "GCP"},
+}
+
+
+def _fmt_usd(n: float) -> str:
+    if n >= 1_000_000:
+        return f"${n/1_000_000:.2f}M"
+    if n >= 1_000:
+        return f"${n/1_000:.1f}k"
+    return f"${n:,.2f}"
+
+
+def _build_provider_svg(bars: list[dict], chart_w: int = 300, chart_h: int = 80) -> str:
+    """Build an SVG bar chart for one provider."""
+    if not bars:
+        return ""
+    max_amt = max(b["amount"] for b in bars) or 1
+    n = len(bars)
+    slot_w = (chart_w - 10) / n
+    bar_w  = max(slot_w - 6, 4)
+    svg_bars = ""
+    for i, b in enumerate(bars):
+        x = 5 + i * slot_w + (slot_w - bar_w) / 2
+        bh = max(int((b["amount"] / max_amt) * (chart_h - 18)), 2)
+        by = chart_h - 12 - bh
+        color = b.get("color", "#14b8a6")
+        lbl   = _fmt_usd(b["amount"])
+        month_short = b["month"].replace("(MTD)", "").replace("(Forecast)", "").strip()
+        month_short = month_short[:6]  # "Jan 25"
+        svg_bars += (
+            f'<rect x="{x:.1f}" y="{by}" width="{bar_w:.1f}" height="{bh}" fill="{color}" rx="2" opacity="{b.get("opacity","0.85")}"/>'
+            f'<text x="{x + bar_w/2:.1f}" y="{by - 2}" text-anchor="middle" font-size="5" fill="#4b5563">{lbl}</text>'
+            f'<text x="{x + bar_w/2:.1f}" y="{chart_h - 2}" text-anchor="middle" font-size="4.5" fill="#9ca3af">{month_short}</text>'
+        )
+    return f'<svg width="{chart_w}" height="{chart_h}" xmlns="http://www.w3.org/2000/svg" style="overflow:visible">{svg_bars}</svg>'
+
+
+def _build_billing_html(billing: dict) -> str:
+    """Build multi-cloud billing section for PDF (WeasyPrint)."""
+    if not billing:
+        return ""
+
+    providers = [(k, v) for k, v in billing.items() if isinstance(v, dict)]
+    if not providers:
+        return ""
+
+    # Aggregate KPIs
+    total_mtd      = sum(v.get("current_mtd", {}).get("amount", 0) for _, v in providers)
+    total_forecast = sum(v.get("forecast", {}).get("amount", 0) for _, v in providers)
+    total_6mo      = sum(sum(m["amount"] for m in v.get("historical_months", [])) for _, v in providers)
+
+    # KPI strip
+    kpi_html = f"""
+    <div class="billing-kpi-row">
+        <div class="billing-kpi">
+            <div class="billing-kpi-value">${total_mtd:,.2f}</div>
+            <div class="billing-kpi-label">Total Cloud Spend (MTD)</div>
+        </div>
+        <div class="billing-kpi" style="border-color:#fed7aa;background:#fff7ed">
+            <div class="billing-kpi-value" style="color:#ea580c">{f'${total_forecast:,.2f}' if total_forecast else '—'}</div>
+            <div class="billing-kpi-label">Projected This Month</div>
+        </div>
+        <div class="billing-kpi" style="border-color:#99f6e4;background:#f0fdf4">
+            <div class="billing-kpi-value" style="color:#0d9488">${total_6mo:,.2f}</div>
+            <div class="billing-kpi-label">Last 6 Months Total</div>
+        </div>
+    </div>"""
+
+    # Per-provider cards
+    provider_cards = ""
+    for provider, data in providers:
+        pc = PROVIDER_COLORS.get(provider, {"bar": "#14b8a6", "mtd": "#3b82f6", "header": "#0f172a", "accent": "#14b8a6", "icon": "💰", "label": provider.upper()})
+        hist = data.get("historical_months", [])
+        mtd  = data.get("current_mtd")
+        fc   = data.get("forecast")
+        svcs = data.get("top_services", [])
+        budgets = data.get("budgets", [])
+        current_month = data.get("current_month", "Current")
+
+        # Build bars list
+        bars = [{"month": m["month"], "amount": m["amount"], "color": pc["bar"], "opacity": "0.75"} for m in hist]
+        if mtd:
+            bars.append({"month": f"{current_month} MTD", "amount": mtd["amount"], "color": pc["mtd"], "opacity": "0.9"})
+        if fc:
+            bars.append({"month": f"Fcst", "amount": fc["amount"], "color": "#f97316", "opacity": "0.65"})
+
+        svg = _build_provider_svg(bars)
+
+        # Month table rows
+        table_rows = ""
+        for i, m in enumerate(hist):
+            prev = hist[i-1]["amount"] if i > 0 else None
+            diff = f"{((m['amount']-prev)/prev*100):+.1f}%" if prev and prev > 0 else "—"
+            diff_color = "#dc2626" if diff.startswith("+") and float(diff[1:-1]) > 10 else ("#16a34a" if diff.startswith("-") else "#6b7280")
+            table_rows += f"<tr><td>{m['month']}</td><td style='text-align:right'>${m['amount']:,.2f}</td><td style='text-align:right;color:{diff_color}'>{diff}</td></tr>"
+        if mtd:
+            table_rows += f"<tr style='background:#eff6ff'><td>{current_month} (MTD)</td><td style='text-align:right;color:#2563eb;font-weight:700'>${mtd['amount']:,.2f}</td><td>—</td></tr>"
+        if fc:
+            table_rows += f"<tr style='background:#fff7ed'><td><em>Forecast</em></td><td style='text-align:right;color:#ea580c;font-weight:700'>${fc['amount']:,.2f}</td><td>—</td></tr>"
+
+        # Services rows
+        svc_rows = ""
+        if svcs:
+            max_svc = svcs[0]["amount"] or 1
+            for svc in svcs[:8]:
+                pct = int((svc["amount"] / max_svc) * 100)
+                svc_rows += f"""
+                <tr>
+                    <td style="font-size:7.5pt;color:#374151;padding:2px 6px">{svc['service'][:40]}</td>
+                    <td style="padding:2px 6px">
+                        <div style="background:#e5e7eb;height:6px;border-radius:2px;width:100px">
+                            <div style="background:{pc['accent']};height:6px;border-radius:2px;width:{pct}%"></div>
+                        </div>
+                    </td>
+                    <td style="text-align:right;font-size:7.5pt;font-weight:600;padding:2px 6px">${svc['amount']:,.2f}</td>
+                </tr>"""
+
+        # MoM trend
+        trend_html = ""
+        if len(hist) >= 2:
+            prev_amt = hist[-2]["amount"]
+            curr_amt = hist[-1]["amount"]
+            pct_chg  = ((curr_amt - prev_amt) / prev_amt * 100) if prev_amt > 0 else 0
+            trend_color = "#dc2626" if pct_chg > 10 else ("#16a34a" if pct_chg < -5 else "#6b7280")
+            arrow = "▲" if pct_chg > 0 else "▼"
+            trend_html = f'<span style="font-size:8pt;color:{trend_color}">{arrow} {abs(pct_chg):.1f}% MoM</span>'
+
+        note_html = f'<p style="font-size:7.5pt;color:#b45309;border:1px solid #fde68a;background:#fffbeb;padding:4px 8px;border-radius:4px;margin-top:6px">{data.get("note","")}</p>' if data.get("note") else ""
+
+        budget_html = ""
+        if budgets:
+            budget_html = '<p style="font-size:8pt;font-weight:600;margin-top:8px;margin-bottom:3px">Budgets</p>'
+            for b in budgets[:4]:
+                amt = f"${b['budget']:,.2f}" if b.get("budget") else "Unlimited"
+                budget_html += f'<div style="display:flex;justify-content:space-between;font-size:8pt;padding:2px 0"><span style="color:#374151">{b["name"]}</span><span style="font-weight:700;color:#d97706">{amt}</span></div>'
+
+        provider_cards += f"""
+        <div class="billing-provider-card">
+            <div class="billing-provider-header" style="background:{pc['header']}">
+                <span style="font-size:13pt">{pc['icon']}</span>
+                <span style="font-size:10pt;font-weight:800;color:{pc['accent']};letter-spacing:0.05em">{pc['label']}</span>
+                {f'<span style="font-size:7.5pt;color:#94a3b8">· {data.get("project_id","")}</span>' if data.get("project_id") else ""}
+                <span style="margin-left:auto;font-size:7.5pt">{trend_html}</span>
+            </div>
+            <div class="billing-provider-body">
+                <!-- KPIs -->
+                <div style="display:flex;gap:8px;margin-bottom:8px">
+                    {f'<div class="billing-mini-kpi"><div class="billing-mini-val" style="color:#1e293b">${mtd["amount"]:,.2f}</div><div class="billing-mini-lbl">MTD Spend</div></div>' if mtd else ""}
+                    {f'<div class="billing-mini-kpi" style="background:#fff7ed;border-color:#fed7aa"><div class="billing-mini-val" style="color:#ea580c">${fc["amount"]:,.2f}</div><div class="billing-mini-lbl">Forecast</div></div>' if fc else ""}
+                    <div class="billing-mini-kpi" style="background:#f8fafc;border-color:#e2e8f0"><div class="billing-mini-val" style="color:#0d9488">${sum(m["amount"] for m in hist):,.2f}</div><div class="billing-mini-lbl">6-month total</div></div>
+                </div>
+                <!-- Chart -->
+                {svg if svg else ""}
+                <!-- Legend -->
+                <div style="display:flex;gap:10px;margin-top:4px;font-size:6.5pt;color:#9ca3af">
+                    <span>&#9646; Historical</span>
+                    {f'<span style="color:#3b82f6">&#9646; MTD</span>' if mtd else ""}
+                    {f'<span style="color:#f97316">&#9646; Forecast</span>' if fc else ""}
+                </div>
+                <!-- Table -->
+                {f'<table class="billing-table" style="margin-top:8px"><tr><th>Month</th><th style="text-align:right">Cost</th><th style="text-align:right">vs Prev</th></tr>{table_rows}</table>' if table_rows else ""}
+                {f'<p style="font-size:8pt;font-weight:600;margin-top:8px;margin-bottom:3px">Top Services (Current Month)</p><table class="billing-table"><tr><th>Service</th><th>Spend</th><th style="text-align:right">Amount</th></tr>{svc_rows}</table>' if svc_rows else ""}
+                {budget_html}
+                {note_html}
+            </div>
+        </div>"""
+
+    return f"""
+    <div class="billing-section">
+        <div class="billing-header">
+            <span>💰 CLOUD BILLING DASHBOARD</span>
+            <span style="font-size:8pt;opacity:0.7">Live data · All amounts in USD</span>
+        </div>
+        {kpi_html}
+        <div class="billing-providers-grid">
+            {provider_cards}
+        </div>
+    </div>"""
 
 
 def _build_platform_stats_card(pname: str, icon: str, meta: dict) -> str:
@@ -519,6 +833,62 @@ body {
     flex: 1; color: #1e293b;
 }
 
+/* ── Billing section ── */
+.billing-section {
+    margin-top: 20px;
+    border: 1px solid #d1fae5;
+    border-radius: 10px;
+    overflow: hidden;
+    page-break-inside: avoid;
+}
+.billing-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px;
+    background: linear-gradient(90deg, #0f172a, #134e4a);
+    color: #14B8A6;
+    font-size: 10pt; font-weight: 800; letter-spacing: 0.04em;
+}
+.billing-kpi-row {
+    display: flex; gap: 10px; padding: 12px 16px;
+    background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+}
+.billing-kpi {
+    flex: 1; border: 1px solid #d1fae5; background: white;
+    border-radius: 8px; padding: 8px 12px; text-align: center;
+}
+.billing-kpi-value { font-size: 14pt; font-weight: 900; color: #0f172a; }
+.billing-kpi-label { font-size: 7pt; color: #6b7280; margin-top: 2px; }
+.billing-providers-grid {
+    display: flex; flex-direction: column; gap: 14px;
+    padding: 14px 16px; background: white;
+}
+.billing-provider-card {
+    border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;
+    page-break-inside: avoid;
+}
+.billing-provider-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px; color: white;
+}
+.billing-provider-body {
+    padding: 10px 12px; background: white;
+}
+.billing-mini-kpi {
+    flex: 1; background: #f8fafc; border: 1px solid #e2e8f0;
+    border-radius: 6px; padding: 5px 8px; text-align: center;
+}
+.billing-mini-val { font-size: 10pt; font-weight: 800; }
+.billing-mini-lbl { font-size: 6.5pt; color: #6b7280; margin-top: 1px; }
+.billing-table {
+    width: 100%; border-collapse: collapse; font-size: 8pt;
+}
+.billing-table th {
+    background: #f8fafc; padding: 4px 6px;
+    text-align: left; font-weight: 700; color: #374151;
+    border-bottom: 1px solid #e2e8f0; font-size: 7.5pt;
+}
+.billing-table td { padding: 3px 6px; border-bottom: 1px solid #f1f5f9; }
+
 /* ── Executive Report (markdown) ── */
 .executive-report { }
 .markdown-body { font-size: 9.5pt; line-height: 1.6; color: #1e293b; }
@@ -583,6 +953,13 @@ body {
 .markdown-body pre code { background: none; color: #94a3b8; }
 .markdown-body hr {
     border: none; border-top: 1px solid #e2e8f0; margin: 16px 0;
+}
+
+/* ── Per-provider page header ── */
+.provider-page-header {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 18px; border-radius: 10px; margin-bottom: 18px;
+    color: white;
 }
 
 /* ── Detailed Findings page ── */

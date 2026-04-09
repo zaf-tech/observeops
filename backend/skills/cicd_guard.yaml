@@ -1,0 +1,38 @@
+skill_id: 4
+name: CICDGuard
+display_name: CI/CD Guard
+icon: "🏗️"
+description: >
+  Audits pipeline health and security across all CI/CD platforms. Checks for
+  insecure pipeline configurations, exposed secrets in environment variables,
+  missing approval gates, and outdated action/plugin versions.
+  When scanning GitHub or GitLab, filters to CI/CD-related findings only.
+llm_role: none
+plugins:
+  jenkins:
+    description: Job security, exposed credentials, plugin vulnerabilities
+    credential_keys: [JENKINS_URL, JENKINS_USER, JENKINS_TOKEN]
+  azure_devops:
+    description: Pipeline security, service connections, variable groups
+    credential_keys: [AZURE_DEVOPS_TOKEN, AZURE_DEVOPS_ORG]
+  circleci:
+    description: Context security, environment variable exposure
+    credential_keys: [CIRCLECI_TOKEN]
+  argocd:
+    description: GitOps sync policies, RBAC, app health
+    credential_keys: [ARGOCD_URL, ARGOCD_TOKEN]
+  github:
+    description: GitHub Actions workflows, secrets exposure (CI/CD filter)
+    credential_keys: [GITHUB_TOKEN]
+    filter: cicd_only
+  gitlab:
+    description: GitLab CI pipelines, runner security (CI/CD filter)
+    credential_keys: [GITLAB_TOKEN]
+    filter: cicd_only
+cicd_keywords: [action, pipeline, ci, workflow, branch protection, runner, trigger]
+scan_categories: [security, reliability, compliance]
+estimates:
+  scan_time_per_plugin_s: 20
+  tokens_per_finding: 55
+  base_prompt_tokens: 350
+  typical_output_tokens: 1200

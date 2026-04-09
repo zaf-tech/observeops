@@ -1,0 +1,16 @@
+skill_id: 2
+name: LogAnalyst
+display_name: Log Analyst
+icon: "📜"
+description: >
+  Parses CloudWatch, syslog, and application log files for anomalies,
+  error spikes, and unusual access patterns. Uses the scanning LLM to
+  summarise findings from raw log data.
+llm_role: scanning
+plugins: {}
+scan_categories: [security, reliability, performance]
+estimates:
+  scan_time_per_plugin_s: 10
+  tokens_per_finding: 80
+  base_prompt_tokens: 300
+  typical_output_tokens: 500

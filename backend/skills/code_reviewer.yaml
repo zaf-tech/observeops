@@ -1,0 +1,37 @@
+skill_id: 5
+name: CodeReviewer
+display_name: Code Reviewer
+icon: "🔍"
+description: >
+  Reviews code repositories, artifact registries, and quality platforms for
+  dependency vulnerabilities, CVEs, outdated packages, branch protection
+  failures, and public exposure risks. Integrates SonarQube and Snyk findings.
+llm_role: none
+plugins:
+  github:
+    description: Repos, branch protection, Dependabot, public exposure
+    credential_keys: [GITHUB_TOKEN]
+  gitlab:
+    description: Repos, merge request settings, GitLab CI quality
+    credential_keys: [GITLAB_TOKEN]
+  bitbucket:
+    description: Repos, pipeline configurations
+    credential_keys: [BITBUCKET_USERNAME, BITBUCKET_APP_PASSWORD]
+  sonarqube:
+    description: Code quality gates, coverage, security hotspots
+    credential_keys: [SONAR_TOKEN]
+  snyk:
+    description: Dependency CVEs, license compliance, container scanning
+    credential_keys: [SNYK_TOKEN]
+  artifactory:
+    description: Artifact CVE scanning, policy violations
+    credential_keys: [ARTIFACTORY_URL, ARTIFACTORY_TOKEN]
+  nexus:
+    description: Package vulnerability checks, repository policies
+    credential_keys: [NEXUS_URL, NEXUS_USER, NEXUS_PASSWORD]
+scan_categories: [security, reliability, compliance]
+estimates:
+  scan_time_per_plugin_s: 30
+  tokens_per_finding: 65
+  base_prompt_tokens: 400
+  typical_output_tokens: 1500

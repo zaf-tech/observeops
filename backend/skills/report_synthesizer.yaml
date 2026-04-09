@@ -1,0 +1,75 @@
+skill_id: 6
+name: ReportSynthesizer
+display_name: Report Synthesizer
+icon: "📋"
+description: >
+  Aggregates all findings from Skills 1-5 and generates an executive-grade
+  infrastructure audit report using the configured LLM. Produces a structured
+  Markdown report with Platform Overview, Executive Summary, prioritised findings,
+  risk breakdown table, and recommended action plan. Falls back to a structured
+  template if the LLM is unavailable.
+llm_role: reporting
+plugins: {}
+report_sections:
+  - Platform Overview
+  - Executive Summary
+  - Critical & High Priority Issues
+  - Medium & Low Priority Issues
+  - Risk Breakdown Table
+  - Recommended Action Plan
+  - Positive Observations
+llm_providers:
+  ollama:
+    display: Ollama (local)
+    speed_tokens_per_sec: 15
+    cost_per_1k_tokens_usd: 0.0
+    context_window: 8192
+  openai:
+    display: OpenAI GPT-4o-mini
+    speed_tokens_per_sec: 80
+    cost_per_1k_tokens_usd: 0.00015
+    context_window: 128000
+  sonnet:
+    display: Claude Sonnet
+    speed_tokens_per_sec: 60
+    cost_per_1k_tokens_usd: 0.003
+    context_window: 200000
+  gemini:
+    display: Google Gemini
+    speed_tokens_per_sec: 70
+    cost_per_1k_tokens_usd: 0.000075
+    context_window: 1000000
+  deepseek:
+    display: DeepSeek
+    speed_tokens_per_sec: 50
+    cost_per_1k_tokens_usd: 0.00014
+    context_window: 64000
+  bedrock-haiku:
+    display: AWS Bedrock Haiku
+    speed_tokens_per_sec: 100
+    cost_per_1k_tokens_usd: 0.00025
+    context_window: 200000
+  groq:
+    display: Groq
+    speed_tokens_per_sec: 250
+    cost_per_1k_tokens_usd: 0.0001
+    context_window: 32768
+  mistral:
+    display: Mistral AI
+    speed_tokens_per_sec: 60
+    cost_per_1k_tokens_usd: 0.0002
+    context_window: 32768
+  azure-openai:
+    display: Azure OpenAI
+    speed_tokens_per_sec: 80
+    cost_per_1k_tokens_usd: 0.00015
+    context_window: 128000
+  cohere:
+    display: Cohere Command R
+    speed_tokens_per_sec: 50
+    cost_per_1k_tokens_usd: 0.0005
+    context_window: 128000
+estimates:
+  base_prompt_tokens: 800
+  tokens_per_finding: 65
+  typical_output_tokens: 2500

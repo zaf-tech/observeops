@@ -1,16 +1,20 @@
 """
 Skill 1 — Cloud Auditor
 Loads all cloud + Kubernetes plugins dynamically and runs their scans.
-Contains ZERO platform-specific code.
+Contains ZERO platform-specific code. Plugin list driven by skills/cloud_auditor.yaml.
 """
 import logging
+import pathlib
+import yaml
 from typing import Callable
 
 logger = logging.getLogger(__name__)
 
-CLOUD_PLUGIN_NAMES = {
-    "aws", "azure", "gcp", "eks", "aks", "gke", "cloudformation",
-}
+_SKILL_FILE = pathlib.Path(__file__).parent.parent / "skills" / "cloud_auditor.yaml"
+with open(_SKILL_FILE) as _f:
+    SKILL_DEF = yaml.safe_load(_f)
+
+CLOUD_PLUGIN_NAMES = set(SKILL_DEF.get("plugins", {}).keys())
 
 
 class CloudAuditor:

@@ -2,18 +2,20 @@
 Skill 5 — Code Reviewer
 Scans repos for quality, CVEs, and dependency drift using SonarQube,
 Snyk, GitHub, GitLab, Artifactory, Nexus plugins.
-Platform-agnostic — no platform-specific code here.
+Platform-agnostic — plugin list driven by skills/code_reviewer.yaml.
 """
 import logging
+import pathlib
+import yaml
 from typing import Callable
 
 logger = logging.getLogger(__name__)
 
-CODE_PLUGIN_NAMES = {
-    "github", "gitlab", "bitbucket",
-    "sonarqube", "snyk",
-    "artifactory", "nexus",
-}
+_SKILL_FILE = pathlib.Path(__file__).parent.parent / "skills" / "code_reviewer.yaml"
+with open(_SKILL_FILE) as _f:
+    SKILL_DEF = yaml.safe_load(_f)
+
+CODE_PLUGIN_NAMES = set(SKILL_DEF.get("plugins", {}).keys())
 
 
 class CodeReviewer:

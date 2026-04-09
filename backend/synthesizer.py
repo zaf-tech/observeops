@@ -86,6 +86,7 @@ async def run_audit(
     report_llm: str,
     llm_config: dict,
     custom_instructions: str,
+    report_name: str,
     progress_cb: Callable[[str, str, int], None],
 ) -> None:
     """
@@ -199,6 +200,21 @@ async def run_audit(
         except Exception as exc:
             logger.warning("Job %s: platform stats collection failed: %s", job_id, exc)
 
+        # ── Billing data (when user requests it and AWS is available) ──
+        try:
+            from billing_collector import should_collect_billing, collect_billing_data
+            if custom_instructions and should_collect_billing(custom_instructions):
+                logger.info("Job %s: billing keywords detected — fetching AWS Cost Explorer data", job_id)
+                billing = collect_billing_data()
+                if billing:
+                    platform_stats["_billing"] = billing
+                    logger.info("Job %s: billing data collected (%d historical months)",
+                                job_id, len(billing.get("historical_months", [])))
+                else:
+                    logger.info("Job %s: billing collection returned no data", job_id)
+        except Exception as exc:
+            logger.warning("Job %s: billing collection failed: %s", job_id, exc)
+
         # ── Skill 6 — Report Synthesizer ──────────────────────────────
         progress_cb("ReportSynthesizer", "running", len(all_findings))
         try:
@@ -213,7 +229,8 @@ async def run_audit(
                 ).run,
                 all_findings,
             )
-            _save_report(job_id, result, all_findings, plugin_audit, platform_stats)
+            _save_report(job_id, result, all_findings, plugin_audit, platform_stats,
+                        result.get("token_usage", {}), report_name)
             from job_store import complete_job
             complete_job(job_id, result.get("summary", {}))
             progress_cb("ReportSynthesizer", "done", len(all_findings))
@@ -222,7 +239,7 @@ async def run_audit(
             progress_cb("ReportSynthesizer", "error", 0)
             _save_report(job_id,
                          {"markdown": "Report generation failed.", "summary": {}},
-                         all_findings, plugin_audit, platform_stats)
+                         all_findings, plugin_audit, platform_stats, {}, report_name)
             from job_store import fail_job
             fail_job(job_id, str(exc))
 
@@ -235,15 +252,19 @@ async def run_audit(
 def _save_report(job_id: str, result: dict,
                  findings: list[dict],
                  plugin_audit: list[dict] | None = None,
-                 platform_stats: dict | None = None) -> None:
+                 platform_stats: dict | None = None,
+                 token_usage: dict | None = None,
+                 report_name: str = "") -> None:
     report_path = REPORTS_DIR / f"{job_id}.json"
     payload = {
         "job_id":          job_id,
+        "report_name":     report_name,
         "markdown":        result.get("markdown", ""),
         "summary":         result.get("summary", {}),
         "findings":        findings,
         "plugin_audit":    plugin_audit or [],
         "platform_stats":  platform_stats or {},
+        "token_usage":     token_usage or {},
     }
     report_path.write_text(json.dumps(payload, indent=2, default=str))
     logger.info("Report saved: %s", report_path)

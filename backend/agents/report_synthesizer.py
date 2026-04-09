@@ -60,11 +60,27 @@ class ReportSynthesizer:
         self._progress("ReportSynthesizer: aggregating findings…")
         summary = self._build_summary(all_findings)
 
-        self._progress(f"ReportSynthesizer: generating report via LLM provider='{self._report_llm}'…")
-        markdown = self._generate_markdown(all_findings, summary)
+        # Estimate tokens before calling LLM
+        prompt_tokens_est = self._estimate_prompt_tokens(all_findings)
+        self._progress(
+            f"ReportSynthesizer: generating report via LLM provider='{self._report_llm}'… "
+            f"(~{prompt_tokens_est:,} prompt tokens estimated)"
+        )
 
-        self._progress("ReportSynthesizer: report complete")
-        return {"markdown": markdown, "summary": summary}
+        markdown, token_usage = self._generate_markdown(all_findings, summary)
+
+        self._progress(
+            f"ReportSynthesizer: report complete — "
+            f"prompt {token_usage['prompt_tokens']:,} tok · "
+            f"output {token_usage['completion_tokens']:,} tok · "
+            f"total {token_usage['total_tokens']:,} tok"
+        )
+        return {"markdown": markdown, "summary": summary, "token_usage": token_usage}
+
+    def _estimate_prompt_tokens(self, findings: list[dict]) -> int:
+        """Rough token estimate: 1 token ≈ 4 characters."""
+        prompt = self._build_prompt(findings, self._build_summary(findings))
+        return max(1, len(prompt) // 4)
 
     # ── Summary ────────────────────────────────────────────────────────
 
@@ -91,22 +107,38 @@ class ReportSynthesizer:
 
     # ── LLM generation ─────────────────────────────────────────────────
 
-    def _generate_markdown(self, findings: list[dict], summary: dict) -> str:
+    def _generate_markdown(self, findings: list[dict], summary: dict) -> tuple[str, dict]:
+        _null_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         try:
             from config import get_report_llm
             llm = get_report_llm(self._report_llm, self._llm_config)
             logger.info("ReportSynthesizer: LLM object created → %s", type(llm).__name__)
 
             prompt = self._build_prompt(findings, summary)
-            logger.info("ReportSynthesizer: invoking LLM with %d findings…", len(findings))
+            prompt_tokens_est = max(1, len(prompt) // 4)
+            logger.info("ReportSynthesizer: invoking LLM with %d findings (~%d tokens)…",
+                        len(findings), prompt_tokens_est)
 
             result = llm.invoke(prompt)
             llm_text = _extract_llm_text(result)
 
-            logger.info("ReportSynthesizer: LLM returned %d chars", len(llm_text))
+            # Actual token counts from response metadata (LangChain standard)
+            completion_tokens = max(1, len(llm_text) // 4)
+            token_usage = {"prompt_tokens": prompt_tokens_est,
+                           "completion_tokens": completion_tokens,
+                           "total_tokens": prompt_tokens_est + completion_tokens}
+            # Override with exact counts if LangChain provides them
+            if hasattr(result, "usage_metadata") and result.usage_metadata:
+                um = result.usage_metadata
+                token_usage = {
+                    "prompt_tokens":     getattr(um, "input_tokens",  prompt_tokens_est),
+                    "completion_tokens": getattr(um, "output_tokens", completion_tokens),
+                    "total_tokens":      getattr(um, "total_tokens",  token_usage["total_tokens"]),
+                }
+            logger.info("ReportSynthesizer: LLM returned %d chars | tokens: %s", len(llm_text), token_usage)
 
             if llm_text and len(llm_text) > 100:
-                return self._format_report(llm_text, summary)
+                return self._format_report(llm_text, summary), token_usage
             else:
                 logger.warning(
                     "ReportSynthesizer: LLM response too short (%d chars), "
@@ -121,7 +153,7 @@ class ReportSynthesizer:
                 type(exc).__name__, exc
             )
 
-        return self._template_report(findings, summary)
+        return self._template_report(findings, summary), _null_usage
 
     def _build_prompt(self, findings: list[dict], summary: dict) -> str:
         counts     = summary["by_severity"]
@@ -136,6 +168,8 @@ class ReportSynthesizer:
         if self._platform_stats:
             stats_block = "\nPLATFORM STATISTICS (collected live during scan):\n"
             for pname, meta in self._platform_stats.items():
+                if pname == "_billing":
+                    continue  # handled separately below
                 stats_block += f"\n[{pname.upper()}]\n"
                 for k, v in meta.items():
                     if k == "platform":
@@ -145,6 +179,35 @@ class ReportSynthesizer:
                             stats_block += f"  {k}: {', '.join(str(i) for i in v[:5])}\n"
                     else:
                         stats_block += f"  {k}: {v}\n"
+
+        # Multi-cloud billing data block (real figures from Cost Explorer / Azure CM / GCP)
+        billing_block = ""
+        billing = self._platform_stats.get("_billing")
+        if billing:
+            billing_block = "\nCLOUD BILLING DATA (real figures collected during scan):\n"
+            for provider, data in billing.items():
+                if not isinstance(data, dict):
+                    continue
+                billing_block += f"\n  [{provider.upper()}]\n"
+                for m in data.get("historical_months", []):
+                    billing_block += f"    {m['month']}: ${m['amount']:,.2f} {m.get('unit','USD')}\n"
+                if data.get("current_mtd"):
+                    mtd = data["current_mtd"]
+                    billing_block += f"    {data.get('current_month','Current')} (MTD): ${mtd['amount']:,.2f}\n"
+                if data.get("forecast"):
+                    fc = data["forecast"]
+                    billing_block += f"    {data.get('current_month','Current')} (full month forecast): ${fc['amount']:,.2f}\n"
+                if data.get("top_services"):
+                    billing_block += "    Top services this month:\n"
+                    for svc in data["top_services"][:5]:
+                        billing_block += f"      - {svc['service']}: ${svc['amount']:,.2f}\n"
+                if data.get("budgets"):
+                    billing_block += "    Budgets configured:\n"
+                    for b in data["budgets"][:3]:
+                        amt = f"${b['budget']:,.2f}" if b.get("budget") else "no limit set"
+                        billing_block += f"      - {b['name']}: {amt}\n"
+                if data.get("note"):
+                    billing_block += f"    Note: {data['note']}\n"
 
         # Custom instructions block
         custom_block = ""
@@ -157,7 +220,7 @@ SCAN RESULTS:
 - Platforms scanned: {', '.join(platforms) or 'none'}
 - Total findings: {summary['total']}
 - CRITICAL: {counts.get('CRITICAL', 0)} | HIGH: {counts.get('HIGH', 0)} | MEDIUM: {counts.get('MEDIUM', 0)} | LOW: {counts.get('LOW', 0)} | INFO: {counts.get('INFO', 0)}
-{stats_block}{custom_block}
+{stats_block}{billing_block}{custom_block}
 FINDINGS (JSON):
 {findings_json}
 
@@ -184,7 +247,7 @@ Group by platform. Brief description of each issue and fix.
 (fill in real numbers per platform)
 
 ## Recommended Action Plan
-Numbered priority list of the top 5-10 remediation actions, ordered by risk.{custom_block and chr(10) + '(Address any additional client requirements listed above in this section.)' or ''}
+Numbered priority list of the top 5-10 remediation actions, ordered by risk.{custom_block and chr(10) + '(Address any additional client requirements listed above in this section.)' or ''}{billing_block and chr(10) + chr(10) + '## Cloud Billing Summary' + chr(10) + 'Using the REAL billing figures provided above (do NOT fabricate numbers):' + chr(10) + '- For each provider (AWS/Azure/GCP), show a month-by-month cost table (last 6 months)' + chr(10) + '- Include current month MTD and full-month forecast where available' + chr(10) + '- List the top services by cost for each provider' + chr(10) + '- Highlight notable spend trends (month-over-month increases/decreases %)' + chr(10) + '- Recommend cost optimisation opportunities aligned with the security findings' or ''}
 
 ## Positive Observations
 Any platforms or controls that appear well-configured.
@@ -256,14 +319,46 @@ Rules:
         if self._platform_stats:
             header += "\n## Platform Overview\n"
             for pname, meta in self._platform_stats.items():
+                if pname == "_billing":
+                    continue
                 header += f"\n### {pname.upper()}\n"
                 header += self._format_platform_stats(pname, meta)
+
+        # Multi-cloud billing section
+        billing = self._platform_stats.get("_billing")
+        if billing:
+            header += "\n## Cloud Billing (Live Data)\n"
+            for provider, data in billing.items():
+                if not isinstance(data, dict):
+                    continue
+                header += f"\n### {provider.upper()}\n"
+                header += self._format_billing_stats(data)
 
         # Custom instructions reminder
         if self._custom_instructions:
             header += f"\n> **Client Requirements Addressed:** {self._custom_instructions[:200]}{'…' if len(self._custom_instructions) > 200 else ''}\n"
 
         return header
+
+    def _format_billing_stats(self, billing: dict) -> str:
+        lines = []
+        hist = billing.get("historical_months", [])
+        if hist:
+            lines.append("\n| Month | Cost (USD) |")
+            lines.append("|-------|-----------|")
+            for m in hist:
+                lines.append(f"| {m['month']} | ${m['amount']:,.2f} |")
+        mtd = billing.get("current_mtd")
+        if mtd:
+            lines.append(f"| {billing.get('current_month','Current')} (MTD) | ${mtd['amount']:,.2f} |")
+        fc = billing.get("forecast")
+        if fc:
+            lines.append(f"| {billing.get('current_month','Current')} (forecast) | **${fc['amount']:,.2f}** |")
+        if billing.get("top_services"):
+            lines.append("\n**Top services this month:**")
+            for svc in billing["top_services"][:8]:
+                lines.append(f"- {svc['service']}: ${svc['amount']:,.2f}")
+        return "\n".join(lines) + "\n"
 
     def _format_platform_stats(self, platform: str, meta: dict) -> str:
         """Render a human-readable stats block for a platform."""

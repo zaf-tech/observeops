@@ -1,25 +1,27 @@
 """
 Skill 3 — Security Auditor
 Reviews IAM, open ports, and checks code repos for hardcoded secrets.
-Platform-agnostic — loads cloud IAM + code repo plugins.
+Platform-agnostic — plugin list and secret patterns driven by skills/security_auditor.yaml.
 """
 import logging
 import re
+import pathlib
+import yaml
 from typing import Callable
 
 logger = logging.getLogger(__name__)
 
-IAM_PLUGIN_NAMES = {"aws", "azure", "gcp"}
-REPO_PLUGIN_NAMES = {"github", "gitlab", "bitbucket"}
+_SKILL_FILE = pathlib.Path(__file__).parent.parent / "skills" / "security_auditor.yaml"
+with open(_SKILL_FILE) as _f:
+    SKILL_DEF = yaml.safe_load(_f)
+
+_all_plugins   = SKILL_DEF.get("plugins", {})
+IAM_PLUGIN_NAMES  = {k for k, v in _all_plugins.items() if v.get("filter") == "security_compliance"}
+REPO_PLUGIN_NAMES = {k for k, v in _all_plugins.items() if v.get("filter") == "secrets"}
 
 SECRET_PATTERNS = [
-    (re.compile(r"(?i)(password|passwd|pwd)\s*[=:]\s*['\"]?[^\s'\"]{8,}"), "Hardcoded password"),
-    (re.compile(r"(?i)(api[_-]?key|apikey)\s*[=:]\s*['\"]?[^\s'\"]{8,}"), "Hardcoded API key"),
-    (re.compile(r"AKIA[0-9A-Z]{16}"), "AWS Access Key ID"),
-    (re.compile(r"(?i)aws[_-]?secret[_-]?access[_-]?key\s*[=:]\s*[^\s]{20,}"), "AWS Secret Access Key"),
-    (re.compile(r"(?i)(private[_-]?key|privatekey)\s*[=:]\s*.{10,}"), "Hardcoded private key"),
-    (re.compile(r"ghp_[A-Za-z0-9_]{36}"), "GitHub Personal Access Token"),
-    (re.compile(r"glpat-[A-Za-z0-9\-_]{20}"), "GitLab Personal Access Token"),
+    (re.compile(p["regex"]), p["name"])
+    for p in SKILL_DEF.get("secret_patterns", [])
 ]
 
 
