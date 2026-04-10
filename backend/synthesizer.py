@@ -230,7 +230,7 @@ async def run_audit(
                 all_findings,
             )
             _save_report(job_id, result, all_findings, plugin_audit, platform_stats,
-                        result.get("token_usage", {}), report_name)
+                        result.get("token_usage", {}), report_name, report_llm)
             from job_store import complete_job
             complete_job(job_id, result.get("summary", {}))
             progress_cb("ReportSynthesizer", "done", len(all_findings))
@@ -239,7 +239,7 @@ async def run_audit(
             progress_cb("ReportSynthesizer", "error", 0)
             _save_report(job_id,
                          {"markdown": "Report generation failed.", "summary": {}},
-                         all_findings, plugin_audit, platform_stats, {}, report_name)
+                         all_findings, plugin_audit, platform_stats, {}, report_name, report_llm)
             from job_store import fail_job
             fail_job(job_id, str(exc))
 
@@ -254,11 +254,13 @@ def _save_report(job_id: str, result: dict,
                  plugin_audit: list[dict] | None = None,
                  platform_stats: dict | None = None,
                  token_usage: dict | None = None,
-                 report_name: str = "") -> None:
+                 report_name: str = "",
+                 report_llm: str = "") -> None:
     report_path = REPORTS_DIR / f"{job_id}.json"
     payload = {
         "job_id":          job_id,
         "report_name":     report_name,
+        "report_llm":      report_llm,
         "markdown":        result.get("markdown", ""),
         "summary":         result.get("summary", {}),
         "findings":        findings,

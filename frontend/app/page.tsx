@@ -7,6 +7,7 @@ import StatusLog from "@/components/StatusLog";
 import ReportViewer from "@/components/ReportViewer";
 import ReportHistory from "@/components/ReportHistory";
 import OrchestrationView from "@/components/OrchestrationView";
+import ReportChat from "@/components/ReportChat";
 import {
   startAnalysis,
   fetchReport,
@@ -411,6 +412,16 @@ export default function HomePage() {
             )}
           </div>
         </div>
+
+      {/* ── Report Chat Agent — shown whenever a completed report is loaded ── */}
+      {report && phase === "done" && jobId && (
+        <ReportChat
+          jobId={jobId}
+          reportName={report.report_name ?? reportName}
+          llmProvider={reportLlm.provider}
+          llmConfig={reportLlm}
+        />
+      )}
 
         {/* Footer */}
         <footer className="mt-20 text-center text-xs text-gray-600 border-t border-white/5 pt-8">

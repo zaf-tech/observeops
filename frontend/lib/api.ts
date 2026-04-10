@@ -40,6 +40,8 @@ export interface PluginAuditEntry {
 
 export interface ReportResponse {
   job_id: string;
+  report_name?: string;
+  report_llm?: string;
   markdown: string;
   summary: {
     total: number;
@@ -193,6 +195,54 @@ export async function healthCheck(): Promise<boolean> {
     return res.ok;
   } catch {
     return false;
+  }
+}
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export async function* chatStream(
+  jobId: string,
+  message: string,
+  history: ChatMessage[],
+  llmProvider: string,
+  llmConfig: Record<string, unknown> = {},
+): AsyncGenerator<string> {
+  const res = await fetch(`${API_BASE}/api/chat/${jobId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message,
+      history,
+      llm_provider: llmProvider,
+      llm_config: llmConfig,
+    }),
+  });
+
+  if (!res.ok) throw new Error(`Chat failed: ${res.statusText}`);
+  if (!res.body)  throw new Error("No response body");
+
+  const reader  = res.body.getReader();
+  const decoder = new TextDecoder();
+  let   buffer  = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      try {
+        const payload = JSON.parse(line.slice(6));
+        if (payload.error) throw new Error(payload.error);
+        if (payload.done)  return;
+        if (payload.chunk) yield payload.chunk as string;
+      } catch { /* skip malformed lines */ }
+    }
   }
 }
 
