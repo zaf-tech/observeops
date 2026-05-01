@@ -46,24 +46,10 @@ cd observerops
 cp backend/.env.example backend/.env
 ```
 
-### 2. Edit `backend/.env` — add only the API keys for LLMs you want to use
+### 2. Do not put any keys in `.env`
 
-```bash
-# Ollama (local, free) — no key needed, just set model
-OLLAMA_MODEL=llama3.2
-OLLAMA_BASE_URL=http://host.docker.internal:11434
-
-# Anthropic — only if you pick "Claude Sonnet" in the UI
-ANTHROPIC_API_KEY=sk-ant-...
-
-# Google — only if you pick "Gemini Flash-Lite" in the UI
-GOOGLE_API_KEY=AIza...
-
-# DeepSeek — only if you pick "DeepSeek V3" in the UI
-DEEPSEEK_API_KEY=...
-```
-
-> **Platform credentials (AWS, Azure, GitHub, etc.) are entered in the web UI — do NOT put them in `.env`.**
+Use `backend/.env` only as a runtime environment file required by Docker Compose.
+Enter **all credentials and API keys** in the browser UI during the audit session.
 
 ### 3. Build and run
 
@@ -108,7 +94,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 cp .env.example .env
-# Edit .env — add LLM API keys only
+# Do not put keys in .env
 
 uvicorn main:app --reload
 # Running at http://localhost:8000
@@ -133,6 +119,118 @@ python run_audit.py
 
 ---
 
+## How to run this program
+
+Choose one of these modes:
+
+### Mode A: Docker (fastest setup)
+
+```bash
+git clone https://github.com/your-org/observerops.git
+cd observerops
+cp backend/.env.example backend/.env
+docker compose up --build
+```
+
+Do not place secrets in `.env`. All credentials are provided in the browser UI.
+
+Then open:
+
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8000
+- Swagger docs: http://localhost:8000/docs
+
+Stop services with:
+
+```bash
+docker compose down
+```
+
+### Mode B: Local development (separate backend + frontend)
+
+Backend terminal:
+
+```bash
+cd backend
+python -m venv .venv
+# Windows
+.venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env
+uvicorn main:app --reload
+```
+
+Frontend terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open the app at http://localhost:3000.
+
+### Mode C: Backend-only CLI run
+
+```bash
+cd backend
+python run_audit.py
+```
+
+The CLI writes report JSON files to `backend/reports/`.
+
+---
+
+## How to use this program (API keys and credentials)
+
+All credentials are entered in the browser and kept in-memory for the active audit run.
+
+### 1) LLM provider API keys (entered in browser)
+
+Enter only the key for the provider you select in **AI Model Routing**.
+
+Supported providers include:
+
+- Ollama (local; no API key)
+- OpenAI
+- Anthropic Claude
+- Google Gemini
+- DeepSeek
+- AWS Bedrock
+- Groq
+- Mistral
+- Azure OpenAI
+- Cohere
+
+### 2) Platform credentials (entered in browser)
+
+Enter platform credentials in **Configure Platforms**.
+
+Common credential fields include:
+
+- AWS: access key, secret key, region
+- Azure: tenant ID, client ID, client secret, subscription ID
+- GCP: service account JSON path / project ID
+- GitHub/GitLab/Bitbucket: tokens and org/workspace fields
+- Jenkins/Azure DevOps/CircleCI/ArgoCD: URL + token credentials
+- Sonar/Snyk/Artifactory/Nexus: server URL and token/user credentials
+
+### 3) Security note
+
+Do not commit secrets to the repository. Keep `.env` free of API keys.
+
+### Typical usage flow
+
+1. Start backend and frontend (Docker or local).
+2. Open http://localhost:3000.
+3. Add platform credentials in **Configure Platforms**.
+4. Select scan model and report model.
+5. Click **Generate Audit Report**.
+6. Monitor progress in the live log.
+7. Read the report and download PDF if needed.
+
+---
+
 ## Using the dashboard
 
 1. Open **http://localhost:3000**
@@ -147,10 +245,10 @@ python run_audit.py
 | Provider | Best for | Requires |
 |----------|----------|---------|
 | Ollama (local) | Privacy, free, offline | Ollama running locally |
-| Gemini Flash-Lite | Fast low-cost scanning | `GOOGLE_API_KEY` in `.env` |
-| DeepSeek V3 | High quality, low cost | `DEEPSEEK_API_KEY` in `.env` |
+| Gemini Flash-Lite | Fast low-cost scanning | Gemini API key entered in browser |
+| DeepSeek V3 | High quality, low cost | DeepSeek API key entered in browser |
 | AWS Bedrock Haiku | AWS-native deployments | AWS credentials in UI |
-| Claude Sonnet | Best executive reports | `ANTHROPIC_API_KEY` in `.env` |
+| Claude Sonnet | Best executive reports | Anthropic API key entered in browser |
 
 **Recommended combination:** Gemini Flash-Lite for scanning + Claude Sonnet for the final report.
 
@@ -215,7 +313,7 @@ No agent files change. See `.claude/skills/new-plugin/` for the full template.
 - **Read-only** — no plugin ever writes, deletes, or modifies any resource
 - **In-memory credentials** — platform keys entered in the UI are never written to disk or logs
 - **No credential persistence** — each scan gets a fresh in-memory credential set; they are discarded when the request ends
-- **LLM API keys** — only LLM provider keys live in `.env`; all cloud/repo credentials come from the UI
+- **LLM and platform keys** — all keys are provided in UI for the active run; do not store secrets in `.env`
 
 ---
 

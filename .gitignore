@@ -1,5 +1,7 @@
 # Environment & secrets
 .env
+/.env/
+.claude/
 *.env.local
 **/.env
 
