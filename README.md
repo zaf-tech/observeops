@@ -337,6 +337,11 @@ observerops/
 ```
 
 ---
+## Contributors
+
+Thanks to all contributors who support this project.
+
+- [Talha Jilal](https://github.com/talhajilal)
 
 ## License
 
