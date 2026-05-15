@@ -40,8 +40,8 @@ Platform credentials are entered in the browser and held **in-memory only** — 
 ### 1. Clone and configure
 
 ```bash
-git clone https://github.com/zaf-tech/observerops.git
-cd observerops
+git clone https://github.com/zaf-tech/observeops.git
+cd observeops
 
 cp backend/.env.example backend/.env
 ```
