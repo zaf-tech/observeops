@@ -54,7 +54,7 @@ Enter **all credentials and API keys** in the browser UI during the audit sessio
 ### 3. Build and run
 
 ```bash
-docker compose up --build
+docker compose up --build -d
 ```
 
 | Service | URL |
